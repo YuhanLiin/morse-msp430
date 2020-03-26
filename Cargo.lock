@@ -37,6 +37,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal",
  "msp430",
+ "msp430-atomic",
  "msp430-rt",
  "msp430fr2x5x-hal",
  "nb",

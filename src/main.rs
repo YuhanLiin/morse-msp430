@@ -4,16 +4,18 @@
 
 use core::cell::RefCell;
 use embedded_hal::prelude::*;
-//use morse_msp430::morse;
-use msp430::interrupt::{enable, CriticalSection, Mutex};
+use morse_msp430::{blink_morse, buffer};
+use msp430::interrupt::{enable, free, CriticalSection, Mutex};
 use msp430_rt::entry;
 use msp430fr2x5x_hal::{
-    clock::*, fram::Fram, gpio::Batch, pac, pac::interrupt, pmm::Pmm, serial::*, watchdog::Wdt,
+    clock::*, fram::Fram, gpio::Batch, pac, pac::interrupt, pmm::Pmm, rtc::Rtc, serial::*,
+    watchdog::Wdt,
 };
 use panic_msp430 as _;
 
 static UART: Mutex<RefCell<Option<(Tx<pac::E_USCI_A1>, Rx<pac::E_USCI_A1>)>>> =
     Mutex::new(RefCell::new(None));
+static BUFFER: Mutex<RefCell<buffer::Buffer>> = Mutex::new(RefCell::new(buffer::Buffer::new()));
 
 #[entry]
 fn main(cs: CriticalSection) -> ! {
@@ -29,6 +31,11 @@ fn main(cs: CriticalSection) -> ! {
         .freeze(&mut fram);
     let pmm = Pmm::new(periph.PMM);
     let p4 = Batch::new(periph.P4).split(&pmm);
+    let mut led = Batch::new(periph.P1)
+        .config_pin0(|p| p.to_output())
+        .split(&pmm)
+        .pin0;
+    let mut rtc = Rtc::new(periph.RTC);
 
     let (tx, mut rx) = SerialConfig::new(
         periph.E_USCI_A1,
@@ -47,7 +54,11 @@ fn main(cs: CriticalSection) -> ! {
     UART.borrow(&cs).replace(Some((tx, rx)));
     enable_safe(cs);
 
-    loop {}
+    loop {
+        if let Ok(c) = free(|cs| BUFFER.borrow(cs).borrow_mut().pop()) {
+            blink_morse(c, &mut rtc, &mut led);
+        }
+    }
 }
 
 fn enable_safe(_cs: CriticalSection) {
@@ -64,6 +75,7 @@ fn EUSCI_A1(cs: CriticalSection) {
     if let Ok(c) | Err(nb::Error::Other(RecvError::Overrun(c))) = rx.read() {
         tx.enable_tx_interrupts();
         *CHAR = c;
+        BUFFER.borrow(&cs).borrow_mut().push(c).unwrap();
     }
 
     if tx.write(*CHAR).is_ok() {
