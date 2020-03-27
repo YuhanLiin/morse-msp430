@@ -105,10 +105,10 @@ pub enum FsmState {
 }
 
 impl FsmState {
-    pub fn next(self, morse: Morse) -> (Self, u8) {
+    pub fn next(&mut self, morse: Morse) -> u8 {
         use FsmState::*;
 
-        match morse {
+        let (new, c) = match morse {
             Morse::Dot => match self {
                 Start => (E, 0),
                 E => (I, 0),
@@ -203,10 +203,13 @@ impl FsmState {
                 X => (Start, b'X'),
                 Y => (Start, b'Y'),
                 Z => (Start, b'Z'),
-                LLLO => (E, b'O'),
-                LLLL => (T, b'O'),
-                OOLL => (T, b'U'),
+                LLLO => (Start, b'O'),
+                LLLL => (Start, b'O'),
+                OOLL => (Start, b'U'),
             },
-        }
+        };
+
+        *self = new;
+        c
     }
 }

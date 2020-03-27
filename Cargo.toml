@@ -10,9 +10,9 @@ edition = "2018"
 msp430 = "0.2.0"
 nb = "0.1.2"
 panic-msp430 = "0.2.0"
-msp430fr2x5x-hal = "0.2.0"
 msp430-rt = "0.2.4"
 msp430-atomic = "0.1.1"
+msp430fr2x5x-hal = { path = '../msp430fr2x5x-hal/' }
 
 [dependencies.void]
 version = "1.0.2"

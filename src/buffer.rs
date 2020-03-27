@@ -37,4 +37,9 @@ impl Buffer {
             Err(())
         }
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.reader == self.writer
+    }
 }

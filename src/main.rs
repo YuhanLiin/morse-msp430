@@ -3,8 +3,9 @@
 #![feature(abi_msp430_interrupt)]
 
 use core::cell::RefCell;
+use embedded_hal::digital::v2::*;
 use embedded_hal::prelude::*;
-use morse_msp430::{blink_morse, buffer};
+use morse_msp430::{blink_morse, buffer, detect_morse, morse::FsmState};
 use msp430::interrupt::{enable, free, CriticalSection, Mutex};
 use msp430_rt::entry;
 use msp430fr2x5x_hal::{
@@ -15,7 +16,7 @@ use panic_msp430 as _;
 
 static UART: Mutex<RefCell<Option<(Tx<pac::E_USCI_A1>, Rx<pac::E_USCI_A1>)>>> =
     Mutex::new(RefCell::new(None));
-static BUFFER: Mutex<RefCell<buffer::Buffer>> = Mutex::new(RefCell::new(buffer::Buffer::new()));
+pub static BUFFER: Mutex<RefCell<buffer::Buffer>> = Mutex::new(RefCell::new(buffer::Buffer::new()));
 
 #[entry]
 fn main(cs: CriticalSection) -> ! {
@@ -25,16 +26,18 @@ fn main(cs: CriticalSection) -> ! {
 
     let mut fram = Fram::new(periph.FRCTL);
     let aclk = ClockConfig::new(periph.CS)
-        .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
+        .mclk_dcoclk(DcoclkFreqSel::_8MHz, MclkDiv::_1)
         .smclk_off()
         .aclk_refoclk()
         .freeze(&mut fram);
     let pmm = Pmm::new(periph.PMM);
-    let p4 = Batch::new(periph.P4).split(&pmm);
-    let mut led = Batch::new(periph.P1)
+    let mut p4 = Batch::new(periph.P4)
+        .config_pin1(|p| p.pullup())
+        .split(&pmm);
+    let p1 = Batch::new(periph.P1)
         .config_pin0(|p| p.to_output())
-        .split(&pmm)
-        .pin0;
+        .split(&pmm);
+    let mut led = p1.pin0;
     let mut rtc = Rtc::new(periph.RTC);
 
     let (tx, mut rx) = SerialConfig::new(
@@ -50,14 +53,33 @@ fn main(cs: CriticalSection) -> ! {
     .use_aclk(&aclk)
     .split(p4.pin3.to_alternate1(), p4.pin2.to_alternate1());
 
-    rx.enable_rx_interrupts();
+    //rx.enable_rx_interrupts();
     UART.borrow(&cs).replace(Some((tx, rx)));
     enable_safe(cs);
 
+    let mut state = FsmState::Start;
+    let mut button = p4.pin1;
+    led.set_high().ok();
     loop {
-        if let Ok(c) = free(|cs| BUFFER.borrow(cs).borrow_mut().pop()) {
-            blink_morse(c, &mut rtc, &mut led);
+        let (c, space) = detect_morse(&mut state, &mut rtc, &mut button, &mut led);
+        if c != 0 {
+            free(|cs| {
+                let mut buffer = BUFFER.borrow(cs).borrow_mut();
+                buffer.push(c).unwrap();
+                if space {
+                    buffer.push(b' ').unwrap();
+                };
+                UART.borrow(cs)
+                    .borrow_mut()
+                    .as_mut()
+                    .unwrap()
+                    .0
+                    .enable_tx_interrupts();
+            });
         }
+        //if let Ok(c) = free(|cs| BUFFER.borrow(cs).borrow_mut().pop()) {
+        //blink_morse(c, &mut rtc, &mut led);
+        //}
     }
 }
 
@@ -72,13 +94,19 @@ fn EUSCI_A1(cs: CriticalSection) {
     let mut uart = UART.borrow(&cs).borrow_mut();
     let (ref mut tx, ref mut rx) = uart.as_mut().unwrap();
 
-    if let Ok(c) | Err(nb::Error::Other(RecvError::Overrun(c))) = rx.read() {
-        tx.enable_tx_interrupts();
-        *CHAR = c;
-        BUFFER.borrow(&cs).borrow_mut().push(c).unwrap();
-    }
+    let mut buf = BUFFER.borrow(&cs).borrow_mut();
+    let c = buf.pop().unwrap();
+    tx.write(c).ok();
+    if buf.is_empty() {
+        tx.disable_tx_interrupts()
+    };
+    //if let Ok(c) | Err(nb::Error::Other(RecvError::Overrun(c))) = rx.read() {
+    //tx.enable_tx_interrupts();
+    //*CHAR = c;
+    //BUFFER.borrow(&cs).borrow_mut().push(c).unwrap();
+    //}
 
-    if tx.write(*CHAR).is_ok() {
-        tx.disable_tx_interrupts();
-    }
+    //if tx.write(*CHAR).is_ok() {
+    //tx.disable_tx_interrupts();
+    //}
 }

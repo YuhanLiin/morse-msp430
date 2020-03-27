@@ -98,9 +98,7 @@ dependencies = [
 
 [[package]]
 name = "msp430fr2x5x-hal"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fed3e9a7834379893d9fb4219d018d81c5a28e2f09fa910bbf13a7fd91e2dbd"
+version = "0.2.2"
 dependencies = [
  "embedded-hal",
  "msp430",
