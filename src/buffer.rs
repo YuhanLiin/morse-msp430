@@ -42,4 +42,10 @@ impl Buffer {
     pub fn is_empty(&self) -> bool {
         self.reader == self.writer
     }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.writer = 0;
+        self.reader = 0;
+    }
 }

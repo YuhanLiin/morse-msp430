@@ -4,7 +4,7 @@ pub mod buffer;
 pub mod morse;
 
 use embedded_hal::{
-    digital::v2::{InputPin, OutputPin, ToggleableOutputPin},
+    digital::v2::{InputPin, OutputPin},
     timer::CountDown,
 };
 use morse::{FsmState, Morse};
@@ -51,12 +51,7 @@ where
     block!(timer.wait()).ok();
 }
 
-pub fn detect_morse<
-    R: RtcClockSrc,
-    P: IntrPortNum,
-    N: PinNum,
-    O: OutputPin + ToggleableOutputPin,
->(
+pub fn detect_morse<R: RtcClockSrc, P: IntrPortNum, N: PinNum>(
     state: &mut FsmState,
     rtc: &mut Rtc<R>,
     input: &mut Pin<P, N, Input<Pullup>>,
